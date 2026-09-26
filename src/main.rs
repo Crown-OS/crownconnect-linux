@@ -1,28 +1,31 @@
-mod communication;
-mod config;
-mod discovery;
-mod logging;
-mod actions;
+mod app;
 
-use std::{thread};
+use anyhow::{Context, Result};
+use crownconnect_linux::config::DaemonConfig;
+use tracing_subscriber::filter::Targets;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
-use arboard::Clipboard;
-use communication::{Server};
+const LOG_VARIABLE: &str = "CROWNCONNECT_LOG";
+const DEFAULT_LOG: &str = "info";
 
-use crate::{actions::{action_manager::ActionManager, clipboard::ClipboardAction, shutdown::ShutdownAction, volume::VolumeAction}, logging::{ConsoleLogger, FileLogger}};
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    init_logging()?;
+    let config = DaemonConfig::from_environment().context("cannot configure the daemon")?;
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), name = %config.device_name, "crownconnect starting");
+    app::run(config).await
+}
 
-fn main() {
-    let mut action_manager = ActionManager::new();
-    let logger = ConsoleLogger::new();
-
-    let clipboard = Clipboard::new().unwrap();
-
-    let clipboard_action = ClipboardAction::new(clipboard);
-
-    action_manager.subscribe(communication::Actions::SHUTDOWN, Box::new(ShutdownAction::new()));
-    action_manager.subscribe(communication::Actions::VOLUME, Box::new(VolumeAction::new()));
-    action_manager.subscribe(communication::Actions::CLIPBOARD, Box::new(clipboard_action));
-
-    let mut server = Server::create(action_manager);
-    server.listen(5252).ok();
+fn init_logging() -> Result<()> {
+    let filter: Targets = std::env::var(LOG_VARIABLE)
+        .as_deref()
+        .unwrap_or(DEFAULT_LOG)
+        .parse()
+        .with_context(|| format!("{LOG_VARIABLE} is not a valid filter"))?;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .try_init()
+        .context("cannot install the logger")
 }

@@ -1,15 +1,168 @@
 [package]
-name = "crowncrate-linux"
+name = "crownconnect-linux"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.97"
+description = "CrownOS cross-device hub: pairing, sync and low-latency media with nearby devices"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/crown-os/crownconnect-linux"
+
+# The `crownconnect` IPC schema only. Clients such as crownotify and
+# crownsettings depend on this with `default-features = false`.
+[lib]
+name = "crownconnect_linux"
+path = "src/lib.rs"
+
+[[bin]]
+name = "crownconnect-linux"
+path = "src/main.rs"
+required-features = ["daemon"]
+
+[[bin]]
+name = "crownconnect-viewer"
+path = "src/bin/viewer.rs"
+required-features = ["media"]
+
+[features]
+default = ["daemon"]
+daemon = [
+  "crownos-ipc/tokio",
+  "media",
+  "dep:anyhow",
+  "dep:thiserror",
+  "dep:tokio",
+  "dep:blake3",
+  "dep:bluer",
+  "dep:crownos-clipboard",
+  "dep:crownos-protocols",
+  "dep:drm",
+  "dep:futures-util",
+  "dep:gbm",
+  "dep:if-addrs",
+  "dep:llts-core",
+  "dep:llts-node",
+  "dep:llts-signaling",
+  "dep:llts-transport",
+  "dep:llts-wire",
+  "dep:mdns-sd",
+  "dep:tracing",
+  "dep:tracing-subscriber",
+  "dep:zbus",
+  "dep:zeroize",
+]
+media = [
+  "dep:anyhow",
+  "dep:thiserror",
+  "dep:ffmpeg-next",
+  "dep:pipewire",
+  "dep:opus",
+  "dep:opusic-sys",
+  "dep:rtrb",
+  "dep:v4l",
+  "dep:postcard",
+  "dep:wayland-client",
+  "dep:wayland-protocols",
+  "dep:rustix",
+]
 
 [dependencies]
-gtk = { package = "gtk4", version = "0.7", features = ["v4_10"] }
-glib = "0.17"
-tokio = { version = "1", features = ["rt", "net"] }
+crownos-ipc = { path = "../crownos-ipc" }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
-bytes = "1.11.0"
-anyhow = "1.0.100"
-serde_cbor = "0.11.2"
-arboard = "3.6.1"
+
+anyhow = { version = "1.0.100", optional = true }
+thiserror = { version = "2.0.18", optional = true }
+tokio = { version = "1.52.3", default-features = false, features = [
+  "rt",
+  "macros",
+  "net",
+  "signal",
+  "sync",
+  "time",
+], optional = true }
+
+blake3 = { version = "1.8", optional = true }
+bluer = { version = "0.17.4", features = ["bluetoothd"], optional = true }
+crownos-clipboard = { path = "../crownos-clipboard", default-features = false, optional = true }
+crownos-protocols = { path = "../crownos-protocols", features = ["client"], optional = true }
+drm = { version = "0.14.1", default-features = false, optional = true }
+futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
+gbm = { version = "0.18.0", default-features = false, optional = true }
+if-addrs = { version = "0.15.0", optional = true }
+llts-core = { path = "../llts-protocol/crates/llts-core", optional = true }
+llts-node = { path = "../llts-protocol/crates/llts-node", optional = true }
+llts-signaling = { path = "../llts-protocol/crates/llts-signaling", optional = true }
+llts-transport = { path = "../llts-protocol/crates/llts-transport", optional = true }
+llts-wire = { path = "../llts-protocol/crates/llts-wire", optional = true }
+mdns-sd = { version = "0.21.3", optional = true }
+tracing = { version = "0.1.44", optional = true }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "fmt", "registry", "std"], optional = true }
+zbus = { version = "5.19.0", default-features = false, features = ["tokio"], optional = true }
+zeroize = { version = "1.8", optional = true }
+
+ffmpeg-next = { version = "9.0.0", default-features = false, features = ["codec", "filter", "format"], optional = true }
+opus = { version = "0.4.0", optional = true }
+opusic-sys = { version = "0.7.5", optional = true }
+pipewire = { version = "0.10.1", features = ["v1_2_0"], optional = true }
+postcard = { version = "1.1.3", default-features = false, features = ["use-std"], optional = true }
+rtrb = { version = "0.3.5", optional = true }
+rustix = { version = "1.1.5", default-features = false, features = ["std", "event", "fs", "net", "rand", "time"], optional = true }
+v4l = { version = "0.14.0", optional = true }
+wayland-client = { version = "0.31.15", optional = true }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"], optional = true }
+
+[dev-dependencies]
+ffsp-linux = { path = "../fileshare-linux/crates/ffsp-linux" }
+ffsp-protocol = { path = "../ffsp-protocol" }
+tokio = { version = "1.52.3", default-features = false, features = ["rt", "macros", "sync", "time"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+todo = "deny"
+unimplemented = "deny"
+redundant_clone = "deny"
+large_enum_variant = "warn"
+needless_pass_by_value = "warn"
+trivially_copy_pass_by_ref = "warn"
+cast_possible_truncation = "warn"
+cast_lossless = "warn"
+missing_const_for_fn = "warn"
+
+# The media path seals, protects and paces every datagram; unoptimised, a loopback frame takes
+# longer in the protocol than on a real network.
+[profile.dev.package.llts-core]
+opt-level = 3
+
+[profile.dev.package.llts-transport]
+opt-level = 3
+
+[profile.dev.package.llts-wire]
+opt-level = 3
+
+[profile.dev.package.chacha20]
+opt-level = 3
+
+[profile.dev.package.poly1305]
+opt-level = 3
+
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
+
+[profile.dev.package.blake3]
+opt-level = 3
+
+[profile.dev.package.reed-solomon-simd]
+opt-level = 3
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
