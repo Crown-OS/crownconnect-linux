@@ -213,8 +213,14 @@ impl FeatureCoordinator {
         let Some(pipeline) = self.pipeline(peer, None, stream_ref(stream)) else {
             return;
         };
-        if !pipeline.send(control) {
-            tracing::debug!(?stream, "the pipeline is behind; dropping");
+        let carried_frame = matches!(control, Control::Frame(_));
+        if pipeline.send(control) {
+            return;
+        }
+        tracing::debug!(?stream, "the pipeline is behind; dropping");
+        if carried_frame && let Some(stream) = stream_ref(stream) {
+            self.outlet()
+                .send(MediaOutput::KeyframeNeeded { peer, stream });
         }
     }
 

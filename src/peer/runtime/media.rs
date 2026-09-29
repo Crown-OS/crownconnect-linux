@@ -97,6 +97,11 @@ impl PeerLoop {
                     },
                 );
             }
+            MediaOutput::KeyframeNeeded { peer, stream } => {
+                if let Some(stream) = stream_key(stream) {
+                    self.hand_to_session(peer, &Event::KeyframeNeeded { stream });
+                }
+            }
             MediaOutput::Input { peer, events } => self.hand_to_session(
                 peer,
                 &Event::InputQueued {

@@ -2,10 +2,12 @@ mod buffers;
 mod seat;
 mod state;
 
+use std::io::ErrorKind;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::time::Duration;
 
 use rustix::event::{poll, PollFd, PollFlags, Timespec};
+use wayland_client::backend::WaylandError;
 use wayland_client::globals::registry_queue_init;
 use wayland_client::protocol::wl_buffer::WlBuffer;
 use wayland_client::protocol::wl_compositor::WlCompositor;
@@ -116,7 +118,7 @@ impl Presenter {
         other: Option<BorrowedFd<'_>>,
         timeout: Option<Duration>,
     ) -> Result<bool, PresentError> {
-        self.queue.flush()?;
+        flush(&self.queue)?;
         self.queue.dispatch_pending(&mut self.state)?;
         let mut other_ready = false;
         if let Some(guard) = self.queue.prepare_read() {
@@ -183,7 +185,7 @@ impl Presenter {
         }
         self.surface.commit();
         self.buffers.hold(key, frame);
-        self.queue.flush()?;
+        flush(&self.queue)?;
         Ok(())
     }
 
@@ -272,6 +274,15 @@ fn fitted_size(video: (u32, u32), window: (i32, i32)) -> (i32, i32) {
     };
     let scaled = |extent: f64| saturating_i32((extent * scale).round().max(1.0));
     (scaled(video_width), scaled(video_height))
+}
+
+/// Sends queued requests. A full socket buffer is not an error: the compositor is busy, and
+/// whatever did not fit goes out on the next flush.
+fn flush(queue: &EventQueue<State>) -> Result<(), PresentError> {
+    match queue.flush() {
+        Err(WaylandError::Io(error)) if error.kind() == ErrorKind::WouldBlock => Ok(()),
+        outcome => outcome.map_err(PresentError::from),
+    }
 }
 
 #[cfg(test)]

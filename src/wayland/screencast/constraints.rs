@@ -43,21 +43,38 @@ impl BufferConstraints {
         }
     }
 
-    pub(super) fn choose(&self) -> Option<ChosenLayout> {
-        PREFERRED.into_iter().find_map(|fourcc| {
-            let (_, modifiers) = self
-                .formats
-                .iter()
-                .find(|(known, _)| *known == fourcc.code())?;
-            Some(ChosenLayout {
-                fourcc,
-                modifiers: modifiers
+    /// Every layout worth trying, best first: each preferred format with its explicit
+    /// modifiers, then with the implicit layout when the compositor accepts one. A driver may
+    /// advertise a format its allocator cannot produce — Mesa's AMD GBM has no NV12 — so the
+    /// caller falls through to the next candidate instead of giving up.
+    pub(super) fn candidates(&self) -> Vec<ChosenLayout> {
+        PREFERRED
+            .into_iter()
+            .filter_map(|fourcc| {
+                let (_, modifiers) = self
+                    .formats
+                    .iter()
+                    .find(|(known, _)| *known == fourcc.code())?;
+                Some((fourcc, modifiers))
+            })
+            .flat_map(|(fourcc, modifiers)| {
+                let explicit: Vec<u64> = modifiers
                     .iter()
                     .copied()
                     .filter(|modifier| *modifier != IMPLICIT_MODIFIER)
-                    .collect(),
+                    .collect();
+                let implicit = modifiers.is_empty() || modifiers.contains(&IMPLICIT_MODIFIER);
+                let with_explicit = (!explicit.is_empty()).then_some(ChosenLayout {
+                    fourcc,
+                    modifiers: explicit,
+                });
+                let with_implicit = implicit.then_some(ChosenLayout {
+                    fourcc,
+                    modifiers: Vec::new(),
+                });
+                with_explicit.into_iter().chain(with_implicit)
             })
-        })
+            .collect()
     }
 }
 
@@ -76,11 +93,35 @@ mod tests {
         constraints.add_format(DrmFourcc::Nv12.code());
         constraints.add_modifier(DrmFourcc::Nv12.code(), 0x0200_0000, 0x0000_0001);
         assert_eq!(
-            constraints.choose(),
-            Some(ChosenLayout {
+            constraints.candidates().first(),
+            Some(&ChosenLayout {
                 fourcc: DrmFourcc::Nv12,
                 modifiers: vec![0x0200_0000_0000_0001],
             })
+        );
+    }
+
+    #[test]
+    fn every_offered_layout_is_a_fallback_in_preference_order() {
+        let mut constraints = BufferConstraints::default();
+        constraints.begin(1920, 1200);
+        constraints.add_format(DrmFourcc::Nv12.code());
+        constraints.add_modifier(DrmFourcc::Nv12.code(), 0x00ff_ffff, 0xffff_ffff);
+        constraints.add_format(DrmFourcc::Xrgb8888.code());
+        constraints.add_modifier(DrmFourcc::Xrgb8888.code(), 0x0200_0000, 0x0000_0001);
+        constraints.add_modifier(DrmFourcc::Xrgb8888.code(), 0x00ff_ffff, 0xffff_ffff);
+        let layouts: Vec<(DrmFourcc, usize)> = constraints
+            .candidates()
+            .iter()
+            .map(|layout| (layout.fourcc, layout.modifiers.len()))
+            .collect();
+        assert_eq!(
+            layouts,
+            vec![
+                (DrmFourcc::Nv12, 0),
+                (DrmFourcc::Xrgb8888, 1),
+                (DrmFourcc::Xrgb8888, 0),
+            ]
         );
     }
 
@@ -91,8 +132,11 @@ mod tests {
         constraints.add_format(DrmFourcc::Xrgb8888.code());
         constraints.add_modifier(DrmFourcc::Xrgb8888.code(), 0x00ff_ffff, 0xffff_ffff);
         assert_eq!(
-            constraints.choose().map(|layout| layout.modifiers),
-            Some(Vec::new())
+            constraints
+                .candidates()
+                .first()
+                .map(|layout| layout.modifiers.len()),
+            Some(0)
         );
     }
 
@@ -101,7 +145,7 @@ mod tests {
         let mut constraints = BufferConstraints::default();
         constraints.begin(640, 480);
         constraints.add_format(ARGB8888);
-        assert_eq!(constraints.choose(), None);
+        assert!(constraints.candidates().is_empty());
     }
 
     #[test]
@@ -111,6 +155,6 @@ mod tests {
         constraints.add_format(DrmFourcc::Nv12.code());
         constraints.begin(800, 600);
         assert_eq!((constraints.width, constraints.height), (800, 600));
-        assert_eq!(constraints.choose(), None);
+        assert!(constraints.candidates().is_empty());
     }
 }

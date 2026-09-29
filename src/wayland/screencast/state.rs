@@ -132,20 +132,30 @@ impl ScreencastState {
         let Some(session) = self.session.clone() else {
             return;
         };
-        let Some(layout) = self.constraints.choose() else {
+        let candidates = self.constraints.candidates();
+        if candidates.is_empty() {
             self.stop_with(StopCause::NoUsableFormat);
             return;
-        };
+        }
         let generation = self.ring.as_ref().map_or(0, |ring| ring.generation + 1);
         let slots = self.options.ring_slots.clamp(1, MAX_RING_SLOTS);
         let size = (self.constraints.width, self.constraints.height);
-        let ring = match self.allocator.allocate(generation, &layout, size, slots) {
-            Ok(ring) => Arc::new(ring),
-            Err(error) => {
-                tracing::warn!(%error, "cannot allocate the capture ring");
-                self.stop_with(StopCause::AllocationFailed);
-                return;
-            }
+        let allocated = candidates.iter().find_map(|layout| {
+            self.allocator
+                .allocate(generation, layout, size, slots)
+                .inspect_err(|error| {
+                    tracing::debug!(%error, fourcc = ?layout.fourcc, "layout not allocatable; trying the next");
+                })
+                .ok()
+        });
+        let Some(ring) = allocated.map(Arc::new) else {
+            tracing::warn!(
+                width = size.0,
+                height = size.1,
+                "cannot allocate the capture ring in any offered layout"
+            );
+            self.stop_with(StopCause::AllocationFailed);
+            return;
         };
         let previous = std::mem::take(&mut self.attached);
         for (index, buffer) in ring.buffers() {

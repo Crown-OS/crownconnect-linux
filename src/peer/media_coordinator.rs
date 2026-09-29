@@ -35,6 +35,9 @@ pub enum MediaOutput {
         stream: StreamRef,
         frame: EncodedFrame,
     },
+    /// A decoder fell behind and frames of `stream` were dropped before it saw them, so the
+    /// peer's encoder should send a keyframe to resynchronise it.
+    KeyframeNeeded { peer: DeviceId, stream: StreamRef },
     /// One batch of input events for the peer's input stream.
     Input { peer: DeviceId, events: Vec<u8> },
     /// Every key this side holds down, replacing what the peer believes.

@@ -171,6 +171,27 @@ impl FfspLinkStore {
         }))
     }
 
+    /// Gives ffsp this computer's llts keys when it has none of its own yet, so both protocols
+    /// know it by one key; `false` when ffsp already keeps a different identity.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the identity file cannot be read or written.
+    pub fn adopt_identity(
+        &self,
+        secret_key: &[u8; KEY_LEN],
+        public_key: &[u8; KEY_LEN],
+    ) -> Result<bool, FfspBridgeError> {
+        if let Some(existing) = self.identity()? {
+            return Ok(existing.public_key == *public_key);
+        }
+        let mut bytes = Zeroizing::new(Vec::with_capacity(IDENTITY_LEN));
+        bytes.extend_from_slice(secret_key);
+        bytes.extend_from_slice(public_key);
+        write_private(&self.path.with_extension("identity"), &bytes)?;
+        Ok(true)
+    }
+
     fn load(&self) -> Result<Vec<StoredLink>, FfspBridgeError> {
         read_if_present(&self.path)?
             .map_or_else(|| Ok(Vec::new()), |bytes| decode(&Zeroizing::new(bytes)))
@@ -285,6 +306,21 @@ mod tests {
         assert_eq!(
             std::fs::metadata(&path)?.permissions().mode() & 0o777,
             0o600
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap_or(&path));
+        Ok(())
+    }
+
+    #[test]
+    fn an_identity_is_adopted_once_and_never_replaced() -> Result<(), FfspBridgeError> {
+        let path = scratch("adopt");
+        let store = FfspLinkStore::new(&path);
+        assert!(store.adopt_identity(&[1; KEY_LEN], &[2; KEY_LEN])?);
+        assert!(store.adopt_identity(&[1; KEY_LEN], &[2; KEY_LEN])?);
+        assert!(!store.adopt_identity(&[3; KEY_LEN], &[4; KEY_LEN])?);
+        assert_eq!(
+            store.identity()?.map(|stored| stored.public_key),
+            Some([2; KEY_LEN])
         );
         let _ = std::fs::remove_dir_all(path.parent().unwrap_or(&path));
         Ok(())

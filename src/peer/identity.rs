@@ -39,17 +39,24 @@ pub fn load_or_create(path: &Path, ffsp: &FfspLinkStore) -> Result<DeviceIdentit
         path: path.to_owned(),
         source,
     };
-    if let Some(bytes) = read_if_present(path).map_err(io)? {
-        return decode(&Zeroizing::new(bytes))
-            .ok_or_else(|| IdentityError::Corrupt(path.to_owned()));
-    }
-    let identity = match ffsp.identity()? {
-        Some(stored) => {
-            DeviceIdentity::from_parts(*stored.secret_key, StaticKey(stored.public_key))
+    let identity = match read_if_present(path).map_err(io)? {
+        Some(bytes) => {
+            decode(&Zeroizing::new(bytes)).ok_or_else(|| IdentityError::Corrupt(path.to_owned()))?
         }
-        None => DeviceIdentity::generate()?,
+        None => {
+            let identity = match ffsp.identity()? {
+                Some(stored) => {
+                    DeviceIdentity::from_parts(*stored.secret_key, StaticKey(stored.public_key))
+                }
+                None => DeviceIdentity::generate()?,
+            };
+            write_private(path, &encode(&identity)).map_err(io)?;
+            identity
+        }
     };
-    write_private(path, &encode(&identity)).map_err(io)?;
+    if !ffsp.adopt_identity(identity.private(), identity.public().as_bytes())? {
+        tracing::warn!("ffsp keeps its own identity; file transfers to paired phones will fail");
+    }
     Ok(identity)
 }
 
