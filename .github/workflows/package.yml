@@ -12,6 +12,7 @@ permissions:
 jobs:
   package:
     uses: Crown-OS/.github/.github/workflows/arch-package.yml@main
+    secrets: inherit
     with:
       packages: ffmpeg pipewire libdrm
       aliases: llts-protocol=lls-protocol
