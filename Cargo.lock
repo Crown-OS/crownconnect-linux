@@ -499,7 +499,7 @@ dependencies = [
  "blake3",
  "bluer",
  "crownos-clipboard",
- "crownos-ipc 0.1.0 (git+https://github.com/crown-os/crownos-ipc)",
+ "crownos-ipc",
  "crownos-protocols",
  "drm",
  "ffmpeg-next",
@@ -536,25 +536,13 @@ dependencies = [
 name = "crownos-clipboard"
 version = "0.1.0"
 dependencies = [
- "crownos-ipc 0.1.0",
+ "crownos-ipc",
  "serde",
 ]
 
 [[package]]
 name = "crownos-ipc"
 version = "0.1.0"
-dependencies = [
- "log",
- "postcard",
- "rustix 1.1.5",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "crownos-ipc"
-version = "0.1.0"
-source = "git+https://github.com/crown-os/crownos-ipc#2998c7ae137525490cba84ab8d6238f7cb76ed45"
 dependencies = [
  "log",
  "postcard",

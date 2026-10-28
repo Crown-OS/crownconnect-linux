@@ -199,3 +199,6 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = "debuginfo"
+
+[patch."https://github.com/crown-os/crownos-ipc"]
+crownos-ipc = { path = "../crownos-ipc" }
